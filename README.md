@@ -2,9 +2,6 @@
 
 Motor criptográfico simétrico modular y herramienta CLI en Rust. Implementa despacho dinámico polimórfico (`Encryptor` + `EncryptorFactory`), cifradores clásicos (`caesar`, `xor`, `vigenere`) y AES-128 implementado desde cero según NIST FIPS-197, con limpieza segura de memoria (`zeroize`), validación PKCS#7 en tiempo constante (`subtle`) y escritura atómica de archivos con permisos restrictivos.
 
-> [!NOTE]
-> **Estado actual:** La base criptográfica simétrica, la CLI interactiva, las pruebas unitarias/de aceptación y el pipeline de CI están completos. El contenedor autenticado `.enc v3`, el *vault* con negación plausible y el servidor concurrente de vigilancia forman parte de las próximas fases (módulos preparados en el repositorio).
-
 ---
 
 ## Inicio rápido (CLI)
