@@ -1,0 +1,39 @@
+[package]
+name = "cryptoserver"
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Motor criptográfico simétrico, contenedor vault y servidor concurrente en Rust"
+
+[dependencies]
+zeroize = { version = "1", features = ["derive"] } # Ext 5: limpieza forzada de memoria
+getrandom = { version = "0.2", features = ["std"] } # Ext 9: entropía criptográfica del SO
+clap = { version = "4", features = ["derive"] }    # CLI declarativa
+thiserror = "1"                                    # Modelado idiomático de errores
+ctrlc = "3"                                        # Ext 8: manejo portable de SIGINT
+chrono = "0.4"                                     # Ext 7: marcas temporales ISO-8601
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"                                   # Ext 7: emisión de reportes estructurados
+subtle = "2"                                       # Ext 11: comparación en tiempo constante
+rpassword = "7"                                    # Lectura segura de contraseñas por terminal
+
+# --- Extensiones de Fase Senior (Ext 12 a 16) ---
+x25519-dalek = { version = "2", features = ["static_secrets"] } # Ext 12: Diffie-Hellman asimétrico
+ed25519-dalek = "2"                                             # Ext 12: firmas digitales
+aes-gcm = "0.10"                                                # Ext 13: cifrado autenticado por hardware
+chacha20poly1305 = "0.10"                                       # Ext 13: AEAD alternativo de alta velocidad
+indicatif = "0.17"                                              # Ext 14: barras de progreso interactivas
+tokio = { version = "1", features = ["full"] }                  # Ext 15: runtime asíncrono no bloqueante
+rayon = "1.10"                                                  # Ext 15: paralelismo work-stealing para CPU
+tracing = "0.1"                                                 # Ext 16: observabilidad y telemetría estructurada
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+[dev-dependencies]
+proptest = "1.4"      # Ext 16: pruebas basadas en propiedades
+criterion = "0.5"     # Ext 16: micro-benchmarks estadísticos con reportes HTML
+
+[profile.release]
+overflow-checks = true   # Error 15: comprobación de desbordes obligatoria también en producción
+
+[lints.rust]
+unsafe_code = "forbid"

@@ -1,0 +1,36 @@
+# Build y binarios de Cargo
+/target/
+**/*.rs.bk
+*.bk
+
+# Archivos de entorno y configuración local
+.env
+.env.*
+!.env.example
+
+# Archivos criptográficos y claves locales sensibles
+*.key
+*.pem
+*.crt
+*.cert
+*.vault
+*.enc
+
+# Logs y trazas de ejecución
+*.log
+perf.data
+perf.data.old
+
+# Editores e IDEs
+.idea/
+*.iml
+.vscode/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+
+# Archivos del Sistema Operativo
+.DS_Store
+Thumbs.db
