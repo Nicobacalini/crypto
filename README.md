@@ -6,8 +6,6 @@ Motor criptográfico simétrico modular y herramienta CLI en Rust. Implementa de
 
 ## Inicio rápido (CLI)
 
-**Prerrequisito:** Rust `>= 1.75` (`rust-version = "1.75"`).
-
 ```bash
 # Cifrar un archivo con AES-128 (clave de 16 bytes solicitada sin eco por terminal)
 cargo run -- encrypt -a aes -i mensaje.txt -o mensaje.enc
@@ -63,34 +61,76 @@ Comportamiento operativo de la CLI:
 
 ## Arquitectura del proyecto
 
+### Capas y flujo de ejecución actual
+
+```text
+  Usuario (CLI)
+       │
+       ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Binario: src/main.rs + src/cli.rs (clap)                                   │
+│  1. Cli::parse() valida comando y algoritmo (Algorithm: clap::ValueEnum)   │
+│  2. fs::read(&input) previo al prompt -> Zeroizing<Vec<u8>>                │
+│  3. ask_key() via rpassword (sin eco) -> Zeroizing<String>                 │
+│  4. transform_and_write() -> EncryptorFactory::create(...)                 │
+│  5. write_file_secure(): temp (getrandom) + 0o600 + sync_all + fs::rename  │
+└───────────────────────────────────────┬────────────────────────────────────┘
+                                        │ usa la API pública (sin clap)
+                                        ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Biblioteca: src/lib.rs  (pub mod algorithms; pub mod utils;)               │
+│                                                                            │
+│  ┌──────────────────────────────────┐   ┌───────────────────────────────┐  │
+│  │ algorithms/ (motores simétricos) │   │ utils/ (contratos y errores)  │  │
+│  │  • EncryptorFactory::create      │──▶│  • trait Encryptor: Send+Sync │  │
+│  │  • CaesarCipher   (ZeroizeOnDrop)│   │  • enum CryptoError           │  │
+│  │  • XorCipher      (ZeroizeOnDrop)│   │    (thiserror, sin secretos)  │  │
+│  │  • VigenereCipher (ZeroizeOnDrop)│   └───────────────────────────────┘  │
+│  │  • AesCipher      (FIPS-197, CT) │                                      │
+│  └──────────────────────────────────┘                                      │
+└────────────────────────────────────────────────────────────────────────────┘
+                                        ▲
+                                        │ pruebas unitarias (38) + integración (4)
+┌───────────────────────────────────────┴────────────────────────────────────┐
+│ Verificación: tests unitarios en src/ + tests/aceptacion.rs (lib y binario)│
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Estructura actual del repositorio
+
 ```text
 cryptoserver/
-├── Cargo.toml                  ← Manifiesto, dependencias, profile.release y lint unsafe_code = "forbid"
 ├── .github/workflows/ci.yml    ← Pipeline de CI (fmt, clippy -D warnings, tests, doctests, release)
+├── .gitignore                  ← Reglas de exclusión (target/, claves, *.vault, *.enc)
+├── Cargo.toml                  ← Manifiesto, dependencias, profile.release y lint unsafe_code = "forbid"
+├── Cargo.lock                  ← Resolución exacta de dependencias
+├── README.md                   ← Documentación del proyecto
 ├── src/
-│   ├── lib.rs                  ← API pública de la biblioteca (algorithms y utils)
+│   ├── lib.rs                  ← API pública de la biblioteca (expone únicamente algorithms y utils)
 │   ├── main.rs                 ← Punto de entrada binario, lectura previa, Zeroizing y write_file_secure
 │   ├── cli.rs                  ← Definición privada al binario de comandos y clap::ValueEnum
-│   ├── container.rs            ← Empaquetador y parser del formato .enc v3 (pendiente)
-│   ├── vault.rs                ← Contenedor VaultHeader / VaultEntry y negación (pendiente)
-│   ├── algorithms/             ← Motores criptográficos
-│   │   ├── mod.rs              ← Re-exportaciones de algoritmos y trait Encryptor
+│   ├── algorithms/             ← Motores criptográficos activos
+│   │   ├── mod.rs              ← Re-exportaciones de algoritmos y del trait Encryptor
 │   │   ├── factory.rs          ← EncryptorFactory (desacoplamiento dinámico)
 │   │   ├── caesar.rs           ← Cifrado César (aritmética Z_26)
 │   │   ├── xor.rs              ← XOR con repetición de clave
 │   │   ├── vigenere.rs         ← Vigenère polialfabético
-│   │   └── aes.rs              ← AES-128 con S-Box y GF(2^8) real
-│   ├── utils/                  ← Utilidades transversales
-│   │   ├── mod.rs              ← Trait Encryptor (object-safe) y re-exportaciones
-│   │   ├── error.rs            ← Enum CryptoError modelado con thiserror
-│   │   ├── crypto_utils.rs     ← KDF (folding y PBKDF2), IV y salts CSPRNG (pendiente)
-│   │   └── hmac_utils.rs       ← HMAC incremental y tiempo constante con subtle (pendiente)
-│   └── server/                 ← Servidor concurrente y observabilidad
-│       ├── mod.rs              ← Re-exportaciones (pendiente)
-│       ├── logger.rs           ← Logger thread-safe tolerante a envenenamiento (pendiente)
-│       ├── job_queue.rs        ← Monitor Productor-Consumidor con Mutex + Condvar (pendiente)
-│       ├── report.rs           ← Telemetría y emisión de reportes JSON con serde (pendiente)
-│       └── watch.rs            ← Bucle de sondeo continuo 24/7 y control SIGINT (pendiente)
+│   │   └── aes.rs              ← AES-128 (FIPS-197, INV_SBOX const fn, PKCS#7 en tiempo constante)
+│   ├── utils/                  ← Contratos y modelo de errores activos
+│   │   ├── mod.rs              ← Trait Encryptor (object-safe, Send + Sync) y re-exportación de CryptoError
+│   │   └── error.rs            ← Enum CryptoError modelado con thiserror
+│   │
+│   │   # Stubs vacíos (0 bytes, aún no declarados en src/lib.rs ni src/utils/mod.rs):
+│   ├── container.rs            ← Reservado: empaquetador y parser del formato .enc v3
+│   ├── vault.rs                ← Reservado: contenedor VaultHeader / VaultEntry y negación plausible
+│   ├── utils/crypto_utils.rs   ← Reservado: KDF (folding / PBKDF2), IV y salts CSPRNG
+│   ├── utils/hmac_utils.rs     ← Reservado: HMAC incremental y verificación en tiempo constante
+│   └── server/                 ← Reservado: servidor concurrente y observabilidad
+│       ├── mod.rs
+│       ├── logger.rs
+│       ├── job_queue.rs
+│       ├── report.rs
+│       └── watch.rs
 └── tests/
     └── aceptacion.rs           ← Suite de pruebas de integración y aceptación de biblioteca y binario
 ```
@@ -104,11 +144,11 @@ En lenguajes tradicionales como C o C++, el programador debe invocar destructore
 `Encryptor` (`src/utils/mod.rs`, re-exportado en `src/algorithms/mod.rs`) es el contrato central del motor:
 - **Object-safe (`dyn Encryptor`):** Sus métodos no tienen genéricos ni retornan `Self` por valor, permitiendo despacho dinámico mediante `Box<dyn Encryptor>` o `Arc<dyn Encryptor>`.
 - **Concurrencia (`Send + Sync`):** Garantiza que cualquier motor instanciado por `EncryptorFactory::create` pueda compartirse entre hilos en futuras capas concurrentes.
-- **Desacoplamiento:** `src/lib.rs` expone únicamente `algorithms` y `utils`; `src/cli.rs` pertenece al binario (`src/main.rs`) para evitar filtrar tipos de `clap` en la API de la biblioteca.
+- **Desacoplamiento:** `src/lib.rs` expone únicamente `algorithms` y `utils`; `src/cli.rs` pertenece exclusivamente al binario (`src/main.rs`) para no filtrar tipos de `clap` en la API pública de la biblioteca.
 
 ### Modelo de errores (`CryptoError`)
 
-En Rust los fallos son valores tipados. El enum `CryptoError` (`src/utils/error.rs`), modelado con `thiserror`, centraliza errores de clave (`EmptyKey`, `InvalidKey`), bloque/relleno (`InvalidCiphertextLength`, `InvalidPadding`), algoritmo (`UnknownAlgorithm`), E/S (`Io`), entropía (`Random`) y futuras capas de integridad/vault (`IntegrityCompromised`, `InvalidFormat`, `VaultAccessDenied`, `EntryNotFound`, `ReportSerialization`).
+En Rust los fallos son valores tipados. El enum `CryptoError` (`src/utils/error.rs`), modelado con `thiserror`, centraliza tanto las variantes activas hoy (`EmptyKey`, `InvalidKey`, `InvalidCiphertextLength`, `InvalidPadding`, `UnknownAlgorithm`, `Io`, `Random`) como las reservadas para las próximas capas (`IntegrityCompromised`, `InvalidFormat`, `VaultAccessDenied`, `EntryNotFound`, `ReportSerialization`).
 
 ---
 
